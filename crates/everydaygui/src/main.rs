@@ -160,28 +160,43 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
     // Define the layouts
     let (pipeline_layout) = create_layouts(&device);
 
+    // let width = 800;  // Viewport width
+    // let height = 600; // Viewport height
+    let rect_width = 200; // Rectangle width in pixels
+    let rect_height = 100; // Rectangle height in pixels
+    let scale_factor = 1.5; // TODO: fetch dynamic scaling factor
+
+    // Adjust rectangle dimensions according to the scaling factor
+    let scaled_rect_width = rect_width as f32 * scale_factor;
+    let scaled_rect_height = rect_height as f32 * scale_factor;
+
+    let ndc_width = (scaled_rect_width / size.width as f32) * 2.0;
+    let ndc_height = (scaled_rect_height / size.height as f32) * 2.0;
+
+    let vertices = [
+        Vertex {
+            position: [-ndc_width / 2.0, -ndc_height / 2.0],
+            color: [1.0, 0.0, 0.0],
+        }, // Bottom left
+        Vertex {
+            position: [ndc_width / 2.0, -ndc_height / 2.0],
+            color: [0.0, 1.0, 0.0],
+        }, // Bottom right
+        Vertex {
+            position: [ndc_width / 2.0, ndc_height / 2.0],
+            color: [0.0, 0.0, 1.0],
+        }, // Top right
+        Vertex {
+            position: [-ndc_width / 2.0, ndc_height / 2.0],
+            color: [1.0, 1.0, 0.0],
+        }, // Top left
+    ];
+
     // Set up the vertex and index buffer data
     let (vertex_buffer, index_buffer) = create_vertex_and_index_buffers(
         &device,
         // &bind_group_layout,
-        &[
-            Vertex {
-                position: [-0.0868241, -0.49240386],
-                color: [0.5, 0.0, 0.5],
-            },
-            Vertex {
-                position: [0.4131759, -0.49240386],
-                color: [0.5, 0.0, 0.5],
-            },
-            Vertex {
-                position: [0.4131759, 0.4075961],
-                color: [0.5, 0.0, 0.5],
-            },
-            Vertex {
-                position: [-0.0868241, 0.4075961],
-                color: [0.5, 0.0, 0.5],
-            },
-        ],
+        &vertices,
         &[0, 1, 2, 2, 3, 0],
     );
 
