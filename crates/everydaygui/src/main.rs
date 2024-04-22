@@ -6,6 +6,58 @@ use winit::{
 };
 
 use bytemuck::{Pod, Zeroable};
+use std::sync::Arc;
+
+// TODO: move to components/button.rs
+enum ButtonVariant {
+    Green,
+    Dark,
+    Light,
+}
+
+enum ButtonKind {
+    SmallIcon,
+    SmallShort,
+    SmallWide,
+    LargeIcon,
+    LargeShort,
+    LargeWide,
+}
+
+struct Button {
+    position: (f32, f32),
+    variant: ButtonVariant,
+    kind: ButtonKind,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    // texture: wgpu::Texture,
+    texture: Arc<wgpu::Texture>,
+    // sampler: wgpu::Sampler,
+    bind_group: wgpu::BindGroup,
+    sampler: Arc<wgpu::Sampler>,
+    index_count: u32,
+}
+
+struct ButtonConfig {
+    button_id: u32,
+    position: (f32, f32),
+    variant: ButtonVariant,
+    kind: ButtonKind,
+    // texture: wgpu::Texture,
+    texture: Arc<wgpu::Texture>,
+    // texture_view: wgpu::TextureView,
+    // bind_group_layout: wgpu::BindGroupLayout,
+    // sampler: wgpu::Sampler,
+    texture_view: Arc<wgpu::TextureView>,
+    bind_group_layout: Arc<wgpu::BindGroupLayout>,
+    sampler: Arc<wgpu::Sampler>,
+}
+
+struct AtlasConfig {
+    window_size: winit::dpi::PhysicalSize<u32>,
+    width: u32,
+    height: u32,
+}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -38,6 +90,113 @@ impl Vertex {
             ],
         }
     }
+}
+
+fn create_button(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    config: ButtonConfig,
+    atlasConfig: AtlasConfig,
+) -> Button {
+    // Define vertices based on the position and size provided in config
+    let (vertices, indices) = get_button_vertices_indices(
+        atlasConfig.window_size,
+        config.position,
+        atlasConfig.width,
+        atlasConfig.height,
+    );
+
+    // Create vertex and index buffers
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Vertex Buffer {config.button_id}"),
+        contents: bytemuck::cast_slice(&vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+
+    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Index Buffer {config.button_id}"),
+        contents: bytemuck::cast_slice(&indices),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+
+    // Texture and sampler setup should be done here (similar to earlier texture loading steps)
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &config.bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&config.texture_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&config.sampler),
+            },
+        ],
+        label: Some("Primary Atlas Texture Bind Group {config.button_id}"),
+    });
+
+    Button {
+        position: config.position,
+        variant: config.variant,
+        kind: config.kind,
+        vertex_buffer,
+        index_buffer,
+        texture: config.texture,
+        sampler: config.sampler,
+        bind_group,
+        index_count: indices.len() as u32,
+    }
+}
+
+fn get_button_vertices_indices(
+    size: winit::dpi::PhysicalSize<u32>,
+    position: (f32, f32), // Position relative to the top-left of the viewport
+    atlas_width: u32,
+    atlas_height: u32,
+) -> ([Vertex; 4], [u16; 6]) {
+    let uv_x = 26.0 / atlas_width as f32;
+    let uv_y = 0.0 / atlas_height as f32;
+    let uv_width = 80.0 / atlas_width as f32;
+    let uv_height = 25.0 / atlas_height as f32;
+
+    let rect_width = 80; // Rectangle width in pixels
+    let rect_height = 25; // Rectangle height in pixels
+    let scale_factor = 1.5; // Scaling factor for the button
+
+    let scaled_rect_width = rect_width as f32 * scale_factor;
+    let scaled_rect_height = rect_height as f32 * scale_factor;
+
+    // Calculate width and height in NDC
+    let ndc_width = scaled_rect_width / size.width as f32 * 2.0;
+    let ndc_height = scaled_rect_height / size.height as f32 * 2.0;
+
+    // Transform screen position to NDC
+    let ndc_x = position.0 / size.width as f32 * 2.0 - 1.0;
+    let ndc_y = -(position.1 / size.height as f32 * 2.0 - 1.0);
+
+    let vertices = [
+        Vertex {
+            position: [ndc_x - ndc_width / 2.0, ndc_y + ndc_height / 2.0],
+            tex_coords: [uv_x, uv_y],
+        }, // Top left
+        Vertex {
+            position: [ndc_x + ndc_width / 2.0, ndc_y + ndc_height / 2.0],
+            tex_coords: [uv_x + uv_width, uv_y],
+        }, // Top right
+        Vertex {
+            position: [ndc_x + ndc_width / 2.0, ndc_y - ndc_height / 2.0],
+            tex_coords: [uv_x + uv_width, uv_y + uv_height],
+        }, // Bottom right
+        Vertex {
+            position: [ndc_x - ndc_width / 2.0, ndc_y - ndc_height / 2.0],
+            tex_coords: [uv_x, uv_y + uv_height],
+        }, // Bottom left
+    ];
+
+    let indices = [0, 1, 2, 2, 3, 0]; // Two triangles to form a quad
+
+    (vertices, indices)
 }
 
 fn create_vertex_and_index_buffers(
@@ -185,6 +344,8 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
     let (texture, atlas_width, atlas_height) =
         load_texture_from_file(&device, &queue, "./src/textures/texture_atlas_01.png").await;
 
+    let texture = Arc::new(texture);
+
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         address_mode_u: wgpu::AddressMode::ClampToEdge,
         address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -194,7 +355,11 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         ..Default::default()
     });
 
+    let sampler = Arc::new(sampler);
+
     let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    let texture_view = Arc::new(texture_view);
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[
@@ -218,20 +383,7 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         label: Some("Primary Atlas Texture Bind Group Layout"),
     });
 
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&texture_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&sampler),
-            },
-        ],
-        label: Some("Primary Atlas Texture Bind Group"),
-    });
+    let bind_group_layout = Arc::new(bind_group_layout);
 
     // Define the layouts
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -241,55 +393,51 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         push_constant_ranges: &[],
     });
 
-    // position and size of this particular sprite in the atlas
-    let uv_x = 26.0 / atlas_width as f32;
-    let uv_y = 0.0 / atlas_height as f32;
-    let uv_width = 80.0 / atlas_width as f32;
-    let uv_height = 25.0 / atlas_height as f32;
+    let button_config = ButtonConfig {
+        button_id: 0,
+        position: (60.0, 20.0),
+        variant: ButtonVariant::Green,
+        kind: ButtonKind::SmallShort,
+        texture: Arc::clone(&texture),
+        texture_view: Arc::clone(&texture_view),
+        bind_group_layout: Arc::clone(&bind_group_layout),
+        sampler: Arc::clone(&sampler),
+    };
 
-    // let width = 800;  // Viewport width
-    // let height = 600; // Viewport height
-    let rect_width = 80; // Rectangle width in pixels
-    let rect_height = 25; // Rectangle height in pixels
-    let scale_factor = 1.5; // TODO: fetch dynamic scaling factor
-
-    // Adjust rectangle dimensions according to the scaling factor
-    let scaled_rect_width = rect_width as f32 * scale_factor;
-    let scaled_rect_height = rect_height as f32 * scale_factor;
-
-    let ndc_width = (scaled_rect_width / size.width as f32) * 2.0;
-    let ndc_height = (scaled_rect_height / size.height as f32) * 2.0;
-
-    let vertices = [
-        Vertex {
-            position: [-ndc_width / 2.0, ndc_height / 2.0],
-            tex_coords: [uv_x, uv_y],
-            // color: [1.0, 1.0, 0.0],
-        }, // Top left
-        Vertex {
-            position: [ndc_width / 2.0, ndc_height / 2.0],
-            tex_coords: [uv_x + uv_width, uv_y],
-            // color: [0.0, 0.0, 1.0],
-        }, // Top right
-        Vertex {
-            position: [ndc_width / 2.0, -ndc_height / 2.0],
-            tex_coords: [uv_x + uv_width, uv_y + uv_height],
-            // color: [0.0, 1.0, 0.0],
-        }, // Bottom right
-        Vertex {
-            position: [-ndc_width / 2.0, -ndc_height / 2.0],
-            tex_coords: [uv_x, uv_y + uv_height],
-            // color: [1.0, 0.0, 0.0],
-        }, // Bottom left
-    ];
-
-    // Set up the vertex and index buffer data
-    let (vertex_buffer, index_buffer) = create_vertex_and_index_buffers(
+    let button = create_button(
         &device,
-        // &bind_group_layout,
-        &vertices,
-        &[0, 1, 2, 2, 3, 0],
+        &queue,
+        button_config,
+        AtlasConfig {
+            window_size: size,
+            width: atlas_width,
+            height: atlas_height,
+        },
     );
+
+    let button_config2 = ButtonConfig {
+        button_id: 0,
+        position: (260.0, 20.0),
+        variant: ButtonVariant::Green,
+        kind: ButtonKind::SmallShort,
+        texture: Arc::clone(&texture),
+        texture_view: Arc::clone(&texture_view),
+        bind_group_layout: Arc::clone(&bind_group_layout),
+        sampler: Arc::clone(&sampler),
+    };
+
+    let button2 = create_button(
+        &device,
+        &queue,
+        button_config2,
+        AtlasConfig {
+            window_size: size,
+            width: atlas_width,
+            height: atlas_height,
+        },
+    );
+
+    let buttons = vec![button, button2];
 
     // Load the shaders
     let shader_module_vert_primary = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -433,14 +581,33 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
                                     timestamp_writes: None,
                                     occlusion_query_set: None,
                                 });
-                            rpass.set_pipeline(&render_pipeline);
+                            /**rpass.set_pipeline(&render_pipeline);
                             rpass.set_bind_group(0, &bind_group, &[]);
                             rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
                             rpass.set_index_buffer(
                                 index_buffer.slice(..),
                                 wgpu::IndexFormat::Uint16,
                             );
-                            rpass.draw_indexed(0..6, 0, 0..1); // TODO: make dynamic
+                            rpass.draw_indexed(0..6, 0, 0..1);*/
+                            // TODO: make dynamic
+                            rpass.set_pipeline(&render_pipeline); // Set once if all buttons use the same pipeline
+
+                            for button in &buttons {
+                                // Set the vertex buffer for the current button
+                                rpass.set_vertex_buffer(0, button.vertex_buffer.slice(..));
+
+                                // Set the index buffer for the current button
+                                rpass.set_index_buffer(
+                                    button.index_buffer.slice(..),
+                                    wgpu::IndexFormat::Uint16,
+                                );
+
+                                // Assuming each button uses the same bind group; if not, this would also be set per button
+                                rpass.set_bind_group(0, &button.bind_group, &[]);
+
+                                // Draw the button; you need to know the number of indices
+                                rpass.draw_indexed(0..button.index_count, 0, 0..1);
+                            }
                         }
 
                         queue.submit(Some(encoder.finish()));
