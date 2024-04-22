@@ -420,7 +420,12 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
                                         view: &view,
                                         resolve_target: None,
                                         ops: wgpu::Operations {
-                                            load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                                r: 0.15,
+                                                g: 0.15,
+                                                b: 0.15,
+                                                a: 1.0,
+                                            }),
                                             store: wgpu::StoreOp::Store,
                                         },
                                     })],
