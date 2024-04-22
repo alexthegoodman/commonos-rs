@@ -11,7 +11,8 @@ use bytemuck::{Pod, Zeroable};
 #[derive(Debug, Copy, Clone)]
 struct Vertex {
     position: [f32; 2], // x, y coordinates
-    color: [f32; 3],    // RGB color
+    tex_coords: [f32; 2], // u, v coordinates
+                        // color: [f32; 3],      // RGB color
 }
 
 // Ensure Vertex is Pod and Zeroable
@@ -32,7 +33,7 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     shader_location: 1, // Corresponds to layout(location = 1) in shader
-                    format: wgpu::VertexFormat::Float32x3,
+                    format: wgpu::VertexFormat::Float32x2, // x2 for uv or 3 for color
                 },
             ],
         }
@@ -85,31 +86,55 @@ fn create_vertex_and_index_buffers(
     )
 }
 
-fn create_layouts(device: &wgpu::Device) -> (wgpu::PipelineLayout) {
-    // Create a Bind Group Layout
-    // let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-    //     label: Some("Bind Group Layout"),
-    //     entries: &[wgpu::BindGroupLayoutEntry {
-    //         binding: 0,
-    //         visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-    //         ty: wgpu::BindingType::Buffer {
-    //             ty: wgpu::BufferBindingType::Uniform,
-    //             has_dynamic_offset: false,
-    //             min_binding_size: None,
-    //         },
-    //         count: None,
-    //     }],
-    // });
+use image::GenericImageView; // Make sure you have the `image` crate in your Cargo.toml
 
-    // Create a Pipeline Layout
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Pipeline Layout"),
-        // bind_group_layouts: &[&bind_group_layout],
-        bind_group_layouts: &[], // No bind group layouts
-        push_constant_ranges: &[],
+async fn load_texture_from_file(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    file_path: &str,
+) -> (wgpu::Texture, u32, u32) {
+    let img = image::open(file_path)
+        .expect("Failed to open image")
+        .to_rgba8();
+    let (width, height) = img.dimensions();
+
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        label: Some("Texture Atlas"),
+        view_formats: &[],
     });
 
-    (pipeline_layout)
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &img,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * width),
+            rows_per_image: Some(height),
+        },
+        size,
+    );
+
+    let atlas_width = width / 3;
+    let atlas_height = height / 3;
+
+    (texture, atlas_width, atlas_height)
 }
 
 async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
@@ -157,13 +182,75 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         .await
         .expect("Failed to create device");
 
+    let (texture, atlas_width, atlas_height) =
+        load_texture_from_file(&device, &queue, "./src/textures/texture_atlas_01.png").await;
+
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        ..Default::default()
+    });
+
+    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+        label: Some("Primary Atlas Texture Bind Group Layout"),
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&texture_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+        label: Some("Primary Atlas Texture Bind Group"),
+    });
+
     // Define the layouts
-    let (pipeline_layout) = create_layouts(&device);
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Pipeline Layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        // bind_group_layouts: &[], // No bind group layouts
+        push_constant_ranges: &[],
+    });
+
+    // position and size of this particular sprite in the atlas
+    let uv_x = 26.0 / atlas_width as f32;
+    let uv_y = 0.0 / atlas_height as f32;
+    let uv_width = 80.0 / atlas_width as f32;
+    let uv_height = 25.0 / atlas_height as f32;
 
     // let width = 800;  // Viewport width
     // let height = 600; // Viewport height
-    let rect_width = 200; // Rectangle width in pixels
-    let rect_height = 100; // Rectangle height in pixels
+    let rect_width = 80; // Rectangle width in pixels
+    let rect_height = 25; // Rectangle height in pixels
     let scale_factor = 1.5; // TODO: fetch dynamic scaling factor
 
     // Adjust rectangle dimensions according to the scaling factor
@@ -175,21 +262,25 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
 
     let vertices = [
         Vertex {
-            position: [-ndc_width / 2.0, -ndc_height / 2.0],
-            color: [1.0, 0.0, 0.0],
-        }, // Bottom left
-        Vertex {
-            position: [ndc_width / 2.0, -ndc_height / 2.0],
-            color: [0.0, 1.0, 0.0],
-        }, // Bottom right
+            position: [-ndc_width / 2.0, ndc_height / 2.0],
+            tex_coords: [uv_x, uv_y],
+            // color: [1.0, 1.0, 0.0],
+        }, // Top left
         Vertex {
             position: [ndc_width / 2.0, ndc_height / 2.0],
-            color: [0.0, 0.0, 1.0],
+            tex_coords: [uv_x + uv_width, uv_y],
+            // color: [0.0, 0.0, 1.0],
         }, // Top right
         Vertex {
-            position: [-ndc_width / 2.0, ndc_height / 2.0],
-            color: [1.0, 1.0, 0.0],
-        }, // Top left
+            position: [ndc_width / 2.0, -ndc_height / 2.0],
+            tex_coords: [uv_x + uv_width, uv_y + uv_height],
+            // color: [0.0, 1.0, 0.0],
+        }, // Bottom right
+        Vertex {
+            position: [-ndc_width / 2.0, -ndc_height / 2.0],
+            tex_coords: [uv_x, uv_y + uv_height],
+            // color: [1.0, 0.0, 0.0],
+        }, // Bottom left
     ];
 
     // Set up the vertex and index buffer data
@@ -219,38 +310,67 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         label: Some("EverydayGUI Primary Render Pipeline"),
         layout: Some(&pipeline_layout),
         multiview: None,
+        // vertex: wgpu::VertexState {
+        //     module: &shader_module_vert_primary,
+        //     entry_point: "vs_main", // Entry point for vertex shader
+        //     buffers: &[Vertex::desc()],
+        // },
+        // fragment: Some(wgpu::FragmentState {
+        //     // Optional, needed for coloring
+        //     module: &shader_module_frag_primary,
+        //     entry_point: "fs_main", // Entry point for fragment shader
+        //     targets: &[Some(wgpu::ColorTargetState {
+        //         // format: surface.get_preferred_format(&adapter).unwrap(),
+        //         format: swapchain_format,
+        //         blend: Some(wgpu::BlendState::REPLACE),
+        //         write_mask: wgpu::ColorWrites::ALL,
+        //     })],
+        // }),
+        // primitive: wgpu::PrimitiveState {
+        //     topology: wgpu::PrimitiveTopology::TriangleList,
+        //     strip_index_format: None,
+        //     front_face: wgpu::FrontFace::Ccw,
+        //     cull_mode: Some(wgpu::Face::Back),
+        //     // Setting this to false is useful for debugging
+        //     unclipped_depth: false,
+        //     polygon_mode: wgpu::PolygonMode::Fill,
+        //     conservative: false,
+        // },
+        // depth_stencil: None, // Optional, configure if using depth testing
+        // multisample: wgpu::MultisampleState {
+        //     count: 1,
+        //     mask: !0,
+        //     alpha_to_coverage_enabled: false,
+        // },
         vertex: wgpu::VertexState {
             module: &shader_module_vert_primary,
-            entry_point: "vs_main", // Entry point for vertex shader
-            buffers: &[Vertex::desc()],
+            entry_point: "vs_main", // name of the entry point in your vertex shader
+            buffers: &[Vertex::desc()], // Make sure your Vertex::desc() matches your vertex structure
         },
         fragment: Some(wgpu::FragmentState {
-            // Optional, needed for coloring
             module: &shader_module_frag_primary,
-            entry_point: "fs_main", // Entry point for fragment shader
+            entry_point: "fs_main", // name of the entry point in your fragment shader
             targets: &[Some(wgpu::ColorTargetState {
-                // format: surface.get_preferred_format(&adapter).unwrap(),
                 format: swapchain_format,
-                blend: Some(wgpu::BlendState::REPLACE),
+                // blend: Some(wgpu::BlendState::REPLACE),
+                blend: Some(wgpu::BlendState {
+                    color: wgpu::BlendComponent {
+                        src_factor: wgpu::BlendFactor::SrcAlpha,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        operation: wgpu::BlendOperation::Add,
+                    },
+                    alpha: wgpu::BlendComponent {
+                        src_factor: wgpu::BlendFactor::One,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        operation: wgpu::BlendOperation::Add,
+                    },
+                }),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: Some(wgpu::Face::Back),
-            // Setting this to false is useful for debugging
-            unclipped_depth: false,
-            polygon_mode: wgpu::PolygonMode::Fill,
-            conservative: false,
-        },
-        depth_stencil: None, // Optional, configure if using depth testing
-        multisample: wgpu::MultisampleState {
-            count: 1,
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
     });
 
     let mut config = surface
@@ -309,6 +429,7 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
                                     occlusion_query_set: None,
                                 });
                             rpass.set_pipeline(&render_pipeline);
+                            rpass.set_bind_group(0, &bind_group, &[]);
                             rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
                             rpass.set_index_buffer(
                                 index_buffer.slice(..),
