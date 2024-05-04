@@ -33,7 +33,7 @@ enum ButtonKind {
 }
 
 struct Button {
-    position: (f32, f32),
+    position: (f32, f32, f32),
     variant: ButtonVariant,
     kind: ButtonKind,
     vertex_buffer: wgpu::Buffer,
@@ -46,13 +46,14 @@ struct Button {
 
 struct ButtonConfig {
     button_id: u32,
-    position: (f32, f32),
+    position: (f32, f32, f32),
     variant: ButtonVariant,
     kind: ButtonKind,
     texture: Arc<wgpu::Texture>,
     texture_view: Arc<wgpu::TextureView>,
     bind_group_layout: Arc<wgpu::BindGroupLayout>,
     sampler: Arc<wgpu::Sampler>,
+    render_mode_buffer: Arc<wgpu::Buffer>,
 }
 
 struct AtlasConfig {
@@ -71,11 +72,12 @@ struct Label {
 
 struct LabelConfig {
     label_id: u32,
-    position: (f32, f32),
+    position: (f32, f32, f32),
     font_size: f32,
     texture_view: Arc<wgpu::TextureView>,
     bind_group_layout: Arc<wgpu::BindGroupLayout>,
     sampler: Arc<wgpu::Sampler>,
+    render_mode_buffer: Arc<wgpu::Buffer>,
 }
 
 struct GlyphInfo {
@@ -106,7 +108,7 @@ impl GlyphInfo {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 struct Vertex {
-    position: [f32; 2],   // x, y coordinates
+    position: [f32; 3],   // x, y, z coordinates
     tex_coords: [f32; 2], // u, v coordinates
     // color: [f32; 3],      // RGB color
     color: wgpu::Color, // RGBA color
@@ -125,17 +127,17 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 0, // Corresponds to layout(location = 0) in shader
-                    format: wgpu::VertexFormat::Float32x2,
+                    format: wgpu::VertexFormat::Float32x3, // x3 for position
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1, // Corresponds to layout(location = 1) in shader
-                    format: wgpu::VertexFormat::Float32x2, // x2 for uv or 3 or 4 for color
+                    format: wgpu::VertexFormat::Float32x2, // x2 for uv
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                    offset: std::mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
                     shader_location: 2, // Corresponds to layout(location = 2) in shader
-                    format: wgpu::VertexFormat::Float32x4,
+                    format: wgpu::VertexFormat::Float32x4, // x4 for color
                 },
             ],
         }
@@ -193,14 +195,15 @@ fn create_label(
 
         // Calculate the bottom-left corner of the glyph
         let x0 = label_config.position.0 + glyph.x;
-        let y0 = label_config.position.1 + glyph.y - glyph_height;
+        let y0 = label_config.position.1 + glyph.y;
+        let z0 = label_config.position.2;
 
         // Calculate positions of the rectangle corners
         let positions = [
-            [x0, y0 + glyph_height],
-            [x0 + glyph_width, y0 + glyph_height],
-            [x0 + glyph_width, y0],
-            [x0, y0],
+            [x0, y0 + glyph_height, z0],
+            [x0 + glyph_width, y0 + glyph_height, z0],
+            [x0 + glyph_width, y0, z0],
+            [x0, y0, z0],
         ];
         // hardcode positions
         // let positions = [
@@ -213,12 +216,13 @@ fn create_label(
         println!("Positions: {:?}", positions);
 
         // Convert screen coordinates to NDC
-        let ndc_positions: Vec<[f32; 2]> = positions
+        let ndc_positions: Vec<[f32; 3]> = positions
             .iter()
             .map(|&pos| {
                 [
                     2.0 * pos[0] / atlas_config.window_size.width as f32 - 1.0,
                     -(2.0 * (pos[1] as f32) / atlas_config.window_size.height as f32 - 1.0),
+                    z0, // note: added z coordinate
                 ]
             })
             .collect();
@@ -300,6 +304,14 @@ fn create_label(
             wgpu::BindGroupEntry {
                 binding: 1,
                 resource: wgpu::BindingResource::Sampler(&label_config.sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &label_config.render_mode_buffer,
+                    offset: 0,
+                    size: None,
+                }),
             },
         ],
         label: Some("Font Atlas Texture Bind Group {config.label_id}"),
@@ -449,6 +461,14 @@ fn create_button(
                 binding: 1,
                 resource: wgpu::BindingResource::Sampler(&config.sampler),
             },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &config.render_mode_buffer,
+                    offset: 0,
+                    size: None,
+                }),
+            },
         ],
         label: Some("Primary Atlas Texture Bind Group {config.button_id}"),
     });
@@ -468,7 +488,7 @@ fn create_button(
 
 fn get_button_vertices_indices(
     size: winit::dpi::PhysicalSize<u32>,
-    position: (f32, f32), // Position relative to the top-left of the viewport
+    position: (f32, f32, f32), // Position relative to the top-left of the viewport
     atlas_width: u32,
     atlas_height: u32,
 ) -> ([Vertex; 4], [u16; 6]) {
@@ -502,22 +522,38 @@ fn get_button_vertices_indices(
 
     let vertices = [
         Vertex {
-            position: [ndc_x - ndc_width / 2.0, ndc_y + ndc_height / 2.0],
+            position: [
+                ndc_x - ndc_width / 2.0,
+                ndc_y + ndc_height / 2.0,
+                position.2, // note: added z coordinate
+            ],
             tex_coords: [uv_x, uv_y],
             color: defaultColor,
         }, // Top left
         Vertex {
-            position: [ndc_x + ndc_width / 2.0, ndc_y + ndc_height / 2.0],
+            position: [
+                ndc_x + ndc_width / 2.0,
+                ndc_y + ndc_height / 2.0,
+                position.2, // note: added z coordinate
+            ],
             tex_coords: [uv_x + uv_width, uv_y],
             color: defaultColor,
         }, // Top right
         Vertex {
-            position: [ndc_x + ndc_width / 2.0, ndc_y - ndc_height / 2.0],
+            position: [
+                ndc_x + ndc_width / 2.0,
+                ndc_y - ndc_height / 2.0,
+                position.2, // note: added z coordinate
+            ],
             tex_coords: [uv_x + uv_width, uv_y + uv_height],
             color: defaultColor,
         }, // Bottom right
         Vertex {
-            position: [ndc_x - ndc_width / 2.0, ndc_y - ndc_height / 2.0],
+            position: [
+                ndc_x - ndc_width / 2.0,
+                ndc_y - ndc_height / 2.0,
+                position.2, // note: added z coordinate
+            ],
             tex_coords: [uv_x, uv_y + uv_height],
             color: defaultColor,
         }, // Bottom left
@@ -637,7 +673,7 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         &device,
         &queue,
         &font,
-        36.0,
+        16.0,
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ",
     )
     .await;
@@ -658,31 +694,6 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
     let font_texture_view = font_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
     let font_texture_view = Arc::new(font_texture_view);
-
-    // let font_bind_group_layout =
-    //     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-    //         entries: &[
-    //             wgpu::BindGroupLayoutEntry {
-    //                 binding: 0,
-    //                 visibility: wgpu::ShaderStages::FRAGMENT,
-    //                 ty: wgpu::BindingType::Texture {
-    //                     multisampled: false,
-    //                     view_dimension: wgpu::TextureViewDimension::D2,
-    //                     sample_type: wgpu::TextureSampleType::Float { filterable: true },
-    //                 },
-    //                 count: None,
-    //             },
-    //             wgpu::BindGroupLayoutEntry {
-    //                 binding: 1,
-    //                 visibility: wgpu::ShaderStages::FRAGMENT,
-    //                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-    //                 count: None,
-    //             },
-    //         ],
-    //         label: Some("Font Atlas Texture Bind Group Layout"),
-    //     });
-
-    // let font_bind_group_layout: Arc<wgpu::BindGroupLayout> = Arc::new(font_bind_group_layout);
 
     // note: this path is correct when running from within this crate
     let (texture, atlas_width, atlas_height) =
@@ -723,11 +734,39 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
         ],
         label: Some("Primary Atlas Texture Bind Group Layout"),
     });
 
     let bind_group_layout = Arc::new(bind_group_layout);
+
+    // create renderMode uniform for button backgrounds
+    let render_mode_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Background Render Mode Buffer"),
+        contents: bytemuck::cast_slice(&[0i32]), // Default to normal mode
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let render_mode_buffer = Arc::new(render_mode_buffer);
+
+    // Create a buffer for the renderMode uniform
+    let text_render_mode_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Text Render Mode Buffer"),
+        contents: bytemuck::cast_slice(&[1i32]), // Default to text mode
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let text_render_mode_buffer = Arc::new(text_render_mode_buffer);
 
     // Define the layouts
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -746,11 +785,12 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         &font,
         LabelConfig {
             label_id: 0,
-            position: (100.0, 100.0),
-            font_size: 36.0,
+            position: (12.0, 9.0, 0.01),
+            font_size: 16.0,
             texture_view: Arc::clone(&font_texture_view),
             bind_group_layout: Arc::clone(&bind_group_layout),
             sampler: Arc::clone(&font_sampler),
+            render_mode_buffer: Arc::clone(&text_render_mode_buffer),
         },
         AtlasConfig {
             window_size: size,
@@ -759,17 +799,40 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         },
     );
 
-    let labels = vec![label];
+    let label2 = create_label(
+        &device,
+        &queue,
+        &glyph_infos,
+        "Export MP4",
+        &font,
+        LabelConfig {
+            label_id: 0,
+            position: (216.0, 9.0, 0.01),
+            font_size: 16.0,
+            texture_view: Arc::clone(&font_texture_view),
+            bind_group_layout: Arc::clone(&bind_group_layout),
+            sampler: Arc::clone(&font_sampler),
+            render_mode_buffer: Arc::clone(&text_render_mode_buffer),
+        },
+        AtlasConfig {
+            window_size: size,
+            width: 1024, // TODO: dynamic or dry
+            height: 1024,
+        },
+    );
+
+    let labels = vec![label, label2];
 
     let button_config = ButtonConfig {
         button_id: 0,
-        position: (60.0, 20.0),
+        position: (60.0, 20.0, 0.02),
         variant: ButtonVariant::Green,
         kind: ButtonKind::SmallShort,
         texture: Arc::clone(&texture),
         texture_view: Arc::clone(&texture_view),
         bind_group_layout: Arc::clone(&bind_group_layout),
         sampler: Arc::clone(&sampler),
+        render_mode_buffer: Arc::clone(&render_mode_buffer),
     };
 
     let button = create_button(
@@ -785,13 +848,14 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
 
     let button_config2 = ButtonConfig {
         button_id: 0,
-        position: (260.0, 20.0),
+        position: (260.0, 20.0, 0.02),
         variant: ButtonVariant::Green,
         kind: ButtonKind::SmallShort,
         texture: Arc::clone(&texture),
         texture_view: Arc::clone(&texture_view),
         bind_group_layout: Arc::clone(&bind_group_layout),
         sampler: Arc::clone(&sampler),
+        render_mode_buffer: Arc::clone(&render_mode_buffer),
     };
 
     let button2 = create_button(
