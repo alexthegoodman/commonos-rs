@@ -51,6 +51,9 @@ pub fn create_label(
     // let mut indices: [u16; 6]; // note: hardcode for now
     let mut index_offset = 0;
 
+    let layout_height = layout.height() as f32;
+    let mut layout_width = 0 as f32;
+
     let mut i = 0;
     for (glyph) in layout.glyphs() {
         // note: collects info from A-Z, a-z, 0-9, not supplied label text
@@ -65,6 +68,9 @@ pub fn create_label(
             "{:?} x: {:?} y: {:?} width: {:?} height: {:?}",
             glyph.parent, glyph.x, glyph.y, glyph_width, glyph_height
         );
+
+        // Calculate the width of the layout
+        layout_width += glyph_width;
 
         // Calculate the bottom-left corner of the glyph
         let x0 = label_config.position.0 + glyph.x;
@@ -190,10 +196,26 @@ pub fn create_label(
         label: Some("Font Atlas Texture Bind Group {config.label_id}"),
     });
 
+    // TODO: may be off, check if click handler is ever needed on labels
+    let ndc_bottom_left = (
+        2.0 * label_config.position.0 / atlas_config.window_size.width as f32 - 1.0,
+        -(2.0 * label_config.position.1 / atlas_config.window_size.height as f32 - 1.0),
+    );
+
+    let world_size = (
+        layout_width / atlas_config.window_size.width as f32 * 2.0,
+        layout_height / atlas_config.window_size.height as f32 * 2.0,
+    );
+
     Label {
         vertex_buffer,
         index_buffer,
         index_count: indices.len() as u32,
         bind_group,
+        size: (layout_width, layout_height),
+        world_size: world_size,
+        position: label_config.position,
+        world_position: ndc_bottom_left,
+        on_click: label_config.on_click,
     }
 }

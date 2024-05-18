@@ -18,9 +18,33 @@ use fontdue::Font;
 use everydaygui::button::create_button;
 use everydaygui::label::create_label;
 use everydaygui::shared::{
-    create_font_texture_atlas, load_texture_from_file, AtlasConfig, Button, ButtonConfig,
-    ButtonKind, ButtonVariant, Label, LabelConfig, Vertex,
+    create_font_texture_atlas, load_texture_from_file, point_in_rect, screen_to_world, AtlasConfig,
+    Button, ButtonConfig, ButtonKind, ButtonVariant, Label, LabelConfig, Vertex,
 };
+
+fn handle_click(
+    window_size: (f64, f64),
+    mouse_pos: (f64, f64),
+    buttons: &[Button],
+    labels: &[Label],
+) {
+    // let window_size = (800.0, 600.0); // Replace with your actual window size
+    let world_pos = screen_to_world(mouse_pos, window_size);
+
+    println!("World Position: {:?}", world_pos);
+
+    for button in buttons {
+        if point_in_rect(world_pos, button.world_position, button.world_size) {
+            (button.on_click)();
+        }
+    }
+
+    for label in labels {
+        if point_in_rect(world_pos, label.world_position, label.world_size) {
+            (label.on_click)();
+        }
+    }
+}
 
 async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
     let mut size = window.inner_size();
@@ -197,6 +221,9 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
             bind_group_layout: Arc::clone(&bind_group_layout),
             sampler: Arc::clone(&font_sampler),
             render_mode_buffer: Arc::clone(&text_render_mode_buffer),
+            on_click: Box::new(|| {
+                println!("Get Started clicked (label)!");
+            }),
         },
         AtlasConfig {
             window_size: size,
@@ -219,6 +246,9 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
             bind_group_layout: Arc::clone(&bind_group_layout),
             sampler: Arc::clone(&font_sampler),
             render_mode_buffer: Arc::clone(&text_render_mode_buffer),
+            on_click: Box::new(|| {
+                println!("Export MP4 clicked (label)!");
+            }),
         },
         AtlasConfig {
             window_size: size,
@@ -239,6 +269,9 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         bind_group_layout: Arc::clone(&bind_group_layout),
         sampler: Arc::clone(&sampler),
         render_mode_buffer: Arc::clone(&render_mode_buffer),
+        on_click: Box::new(|| {
+            println!("Get Started clicked (back)!");
+        }),
     };
 
     let button = create_button(
@@ -262,6 +295,9 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         bind_group_layout: Arc::clone(&bind_group_layout),
         sampler: Arc::clone(&sampler),
         render_mode_buffer: Arc::clone(&render_mode_buffer),
+        on_click: Box::new(|| {
+            println!("Export MP4 clicked (back)!");
+        }),
     };
 
     let button2 = create_button(
@@ -374,6 +410,8 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         .unwrap();
     surface.configure(&device, &config);
 
+    let mut mouse_position = (0.0, 0.0);
+
     // execute winit render loop
     let window = &window;
     event_loop
@@ -384,6 +422,19 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
             } = event
             {
                 match event {
+                    WindowEvent::CursorMoved { position, .. } => {
+                        // Update the mouse position
+                        // println!("Mouse Position: {:?}", position);
+                        mouse_position = (position.x as f64, position.y as f64);
+                    }
+                    WindowEvent::MouseInput {
+                        state: ElementState::Pressed,
+                        button: MouseButton::Left,
+                        ..
+                    } => {
+                        let window_size = (size.width as f64, size.height as f64);
+                        handle_click(window_size, mouse_position, &buttons, &labels);
+                    }
                     WindowEvent::Resized(new_size) => {
                         // Reconfigure the surface with the new size
                         config.width = new_size.width.max(1);

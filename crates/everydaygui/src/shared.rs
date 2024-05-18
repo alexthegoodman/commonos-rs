@@ -32,6 +32,7 @@ pub enum ButtonKind {
 
 pub struct Button {
     pub position: (f32, f32, f32),
+    pub world_position: (f32, f32),
     pub variant: ButtonVariant,
     pub kind: ButtonKind,
     pub vertex_buffer: wgpu::Buffer,
@@ -40,6 +41,9 @@ pub struct Button {
     pub bind_group: wgpu::BindGroup,
     pub sampler: Arc<wgpu::Sampler>,
     pub index_count: u32,
+    pub size: (f32, f32),
+    pub world_size: (f32, f32),
+    pub on_click: Box<dyn Fn()>,
 }
 
 pub struct ButtonConfig {
@@ -52,6 +56,7 @@ pub struct ButtonConfig {
     pub bind_group_layout: Arc<wgpu::BindGroupLayout>,
     pub sampler: Arc<wgpu::Sampler>,
     pub render_mode_buffer: Arc<wgpu::Buffer>,
+    pub on_click: Box<dyn Fn()>,
 }
 
 pub struct AtlasConfig {
@@ -66,6 +71,11 @@ pub struct Label {
     pub index_buffer: wgpu::Buffer,
     pub index_count: u32,
     pub bind_group: wgpu::BindGroup,
+    pub size: (f32, f32),
+    pub world_size: (f32, f32),
+    pub position: (f32, f32, f32),
+    pub world_position: (f32, f32),
+    pub on_click: Box<dyn Fn()>,
 }
 
 pub struct LabelConfig {
@@ -76,6 +86,7 @@ pub struct LabelConfig {
     pub bind_group_layout: Arc<wgpu::BindGroupLayout>,
     pub sampler: Arc<wgpu::Sampler>,
     pub render_mode_buffer: Arc<wgpu::Buffer>,
+    pub on_click: Box<dyn Fn()>,
 }
 
 pub struct GlyphInfo {
@@ -285,4 +296,30 @@ pub async fn load_texture_from_file(
     let atlas_height = height / 3;
 
     (texture, atlas_width, atlas_height)
+}
+
+pub fn screen_to_world(screen_pos: (f64, f64), window_size: (f64, f64)) -> (f64, f64) {
+    let (sx, sy) = screen_pos;
+    let (ww, wh) = window_size;
+
+    // Convert from screen space to normalized device coordinates (NDC)
+    let x = (sx / ww) * 2.0 - 1.0;
+    let y = 1.0 - (sy / wh) * 2.0; // Flip y-axis
+
+    // Assuming a simple orthographic projection where NDC directly maps to world coordinates
+    (x, y)
+}
+
+pub fn point_in_rect(point: (f64, f64), rect_pos: (f32, f32), rect_size: (f32, f32)) -> bool {
+    let (px, py) = point;
+    let (rx, ry) = rect_pos;
+    let (rw, rh) = rect_size;
+
+    // cast
+    let rx = rx as f64;
+    let ry = ry as f64;
+    let rw = rw as f64;
+    let rh = rh as f64;
+
+    px >= rx && px <= rx + rw && py >= ry && py <= ry + rh
 }

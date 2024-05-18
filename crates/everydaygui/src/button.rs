@@ -27,7 +27,7 @@ pub fn create_button(
     atlasConfig: AtlasConfig,
 ) -> Button {
     // Define vertices based on the position and size provided in config
-    let (vertices, indices) = get_button_vertices_indices(
+    let (vertices, indices, button_size, world_position, world_size) = get_button_vertices_indices(
         atlasConfig.window_size,
         config.position,
         atlasConfig.width,
@@ -74,6 +74,7 @@ pub fn create_button(
 
     Button {
         position: config.position,
+        world_position: world_position,
         variant: config.variant,
         kind: config.kind,
         vertex_buffer,
@@ -82,6 +83,9 @@ pub fn create_button(
         sampler: config.sampler,
         bind_group,
         index_count: indices.len() as u32,
+        size: button_size,
+        world_size: world_size,
+        on_click: config.on_click,
     }
 }
 
@@ -90,13 +94,14 @@ pub fn get_button_vertices_indices(
     position: (f32, f32, f32), // Position relative to the top-left of the viewport
     atlas_width: u32,
     atlas_height: u32,
-) -> ([Vertex; 4], [u16; 6]) {
+) -> ([Vertex; 4], [u16; 6], (f32, f32), (f32, f32), (f32, f32)) {
     let defaultColor = wgpu::Color {
         r: 1.0,
         g: 1.0,
         b: 1.0,
         a: 1.0,
     };
+    let button_size = (80.0, 25.0); // Button size in pixels
     let uv_x = 26.0 / atlas_width as f32;
     let uv_y = 0.0 / atlas_height as f32;
     let uv_width = 80.0 / atlas_width as f32;
@@ -163,5 +168,11 @@ pub fn get_button_vertices_indices(
     println!("Background Vertices: {:?}", vertices);
     println!("Background Indices: {:?}", indices);
 
-    (vertices, indices)
+    let ndc_bottom_left = (ndc_x - ndc_width / 2.0, ndc_y - ndc_height / 2.0);
+
+    // let world_position = (ndc_x, ndc_y);
+
+    let world_size = (ndc_width, ndc_height);
+
+    (vertices, indices, button_size, ndc_bottom_left, world_size)
 }
