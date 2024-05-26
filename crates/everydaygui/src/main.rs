@@ -127,7 +127,7 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
 
     // note: this path is correct when running from within this crate
     let (texture, atlas_width, atlas_height) =
-        load_texture_from_file(&device, &queue, "./src/textures/texture_atlas_01.png").await;
+        load_texture_from_file(&device, &queue, "./src/textures/texture_atlas_02.png").await;
 
     let texture = Arc::new(texture);
 
@@ -257,7 +257,32 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         },
     );
 
-    let labels = vec![label, label2];
+    let label3 = create_label(
+        &device,
+        &queue,
+        &glyph_infos,
+        "Export MP4",
+        &font,
+        LabelConfig {
+            label_id: 0,
+            position: (216.0, 110.0, 0.01),
+            font_size: 16.0,
+            texture_view: Arc::clone(&font_texture_view),
+            bind_group_layout: Arc::clone(&bind_group_layout),
+            sampler: Arc::clone(&font_sampler),
+            render_mode_buffer: Arc::clone(&text_render_mode_buffer),
+            on_click: Box::new(|| {
+                println!("Export MP4 clicked (label 2)!");
+            }),
+        },
+        AtlasConfig {
+            window_size: size,
+            width: 1024, // TODO: dynamic or dry
+            height: 1024,
+        },
+    );
+
+    let labels = vec![label, label2, label3];
 
     let button_config = ButtonConfig {
         button_id: 0,
@@ -311,7 +336,85 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
         },
     );
 
-    let buttons = vec![button, button2];
+    let button_config3 = ButtonConfig {
+        button_id: 0,
+        position: (260.0, 120.0, 0.02),
+        variant: ButtonVariant::Green,
+        kind: ButtonKind::ThinShort,
+        texture: Arc::clone(&texture),
+        texture_view: Arc::clone(&texture_view),
+        bind_group_layout: Arc::clone(&bind_group_layout),
+        sampler: Arc::clone(&sampler),
+        render_mode_buffer: Arc::clone(&render_mode_buffer),
+        on_click: Box::new(|| {
+            println!("Export MP4 clicked (back)!");
+        }),
+    };
+
+    let button3 = create_button(
+        &device,
+        &queue,
+        button_config3,
+        AtlasConfig {
+            window_size: size,
+            width: atlas_width,
+            height: atlas_height,
+        },
+    );
+
+    let button_config4 = ButtonConfig {
+        button_id: 0,
+        position: (260.0, 320.0, 0.02),
+        variant: ButtonVariant::Light,
+        kind: ButtonKind::MediumShadow,
+        texture: Arc::clone(&texture),
+        texture_view: Arc::clone(&texture_view),
+        bind_group_layout: Arc::clone(&bind_group_layout),
+        sampler: Arc::clone(&sampler),
+        render_mode_buffer: Arc::clone(&render_mode_buffer),
+        on_click: Box::new(|| {
+            println!("Export MP4 clicked (back)!");
+        }),
+    };
+
+    let button4 = create_button(
+        &device,
+        &queue,
+        button_config4,
+        AtlasConfig {
+            window_size: size,
+            width: atlas_width,
+            height: atlas_height,
+        },
+    );
+
+    let button_config5 = ButtonConfig {
+        button_id: 0,
+        position: (260.0, 420.0, 0.019),
+        variant: ButtonVariant::Light,
+        kind: ButtonKind::MediumShadow,
+        texture: Arc::clone(&texture),
+        texture_view: Arc::clone(&texture_view),
+        bind_group_layout: Arc::clone(&bind_group_layout),
+        sampler: Arc::clone(&sampler),
+        render_mode_buffer: Arc::clone(&render_mode_buffer),
+        on_click: Box::new(|| {
+            println!("Export MP4 clicked (back)!");
+        }),
+    };
+
+    let button5 = create_button(
+        &device,
+        &queue,
+        button_config5,
+        AtlasConfig {
+            window_size: size,
+            width: atlas_width,
+            height: atlas_height,
+        },
+    );
+
+    let buttons = vec![button, button2, button3, button4, button5];
 
     // Load the shaders
     let shader_module_vert_primary = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -463,9 +566,14 @@ async fn initialize_core(event_loop: EventLoop<()>, window: Window) {
                                         resolve_target: None,
                                         ops: wgpu::Operations {
                                             load: wgpu::LoadOp::Clear(wgpu::Color {
-                                                r: 0.15,
-                                                g: 0.15,
-                                                b: 0.15,
+                                                // grey background
+                                                // r: 0.15,
+                                                // g: 0.15,
+                                                // b: 0.15,
+                                                // white background
+                                                r: 1.0,
+                                                g: 1.0,
+                                                b: 1.0,
                                                 a: 1.0,
                                             }),
                                             store: wgpu::StoreOp::Store,

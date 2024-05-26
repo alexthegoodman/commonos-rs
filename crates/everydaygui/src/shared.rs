@@ -22,12 +22,16 @@ pub enum ButtonVariant {
 }
 
 pub enum ButtonKind {
+    ThinIcon,
+    ThinShort,
+    ThinWide,
     SmallIcon,
     SmallShort,
     SmallWide,
     LargeIcon,
     LargeShort,
     LargeWide,
+    MediumShadow,
 }
 
 pub struct Button {

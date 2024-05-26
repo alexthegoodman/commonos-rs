@@ -30,6 +30,8 @@ pub fn create_button(
     let (vertices, indices, button_size, world_position, world_size) = get_button_vertices_indices(
         atlasConfig.window_size,
         config.position,
+        &config.variant,
+        &config.kind,
         atlasConfig.width,
         atlasConfig.height,
     );
@@ -89,9 +91,176 @@ pub fn create_button(
     }
 }
 
+// dimensions and positioning based on Variant and Kind
+fn get_button_size_and_position(
+    variant: &ButtonVariant,
+    kind: &ButtonKind,
+) -> (f32, f32, f32, f32) {
+    match variant {
+        ButtonVariant::Green => match kind {
+            ButtonKind::ThinIcon => {
+                let (width, height) = (15.0, 15.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::ThinShort => {
+                let (width, height) = (60.0, 15.0);
+                let (x, y) = (16.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::ThinWide => {
+                let (width, height) = (80.0, 15.0);
+                let (x, y) = (86.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::SmallIcon => {
+                let (width, height) = (25.0, 25.0);
+                let (x, y) = (0.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::SmallShort => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::SmallWide => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::LargeIcon => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::LargeShort => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::LargeWide => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::MediumShadow => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+        },
+        ButtonVariant::Light => match kind {
+            ButtonKind::ThinIcon => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::ThinShort => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::ThinWide => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::SmallIcon => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::SmallShort => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::SmallWide => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::LargeIcon => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::LargeShort => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::LargeWide => {
+                let (width, height) = (80.0, 25.0);
+                let (x, y) = (26.0, 16.0);
+                (width, height, x, y)
+            }
+            ButtonKind::MediumShadow => {
+                let (width, height) = (75.0, 75.0);
+                let (x, y) = (24.0, 78.0);
+                (width, height, x, y)
+            }
+        },
+        ButtonVariant::Dark => match kind {
+            ButtonKind::ThinIcon => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::ThinShort => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::ThinWide => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::SmallIcon => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::SmallShort => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::SmallWide => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::LargeIcon => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::LargeShort => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::LargeWide => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+            ButtonKind::MediumShadow => {
+                let (width, height) = (0.0, 0.0);
+                let (x, y) = (0.0, 0.0);
+                (width, height, x, y)
+            }
+        },
+    }
+}
+
 pub fn get_button_vertices_indices(
     size: winit::dpi::PhysicalSize<u32>,
     position: (f32, f32, f32), // Position relative to the top-left of the viewport
+    variant: &ButtonVariant,
+    kind: &ButtonKind,
     atlas_width: u32,
     atlas_height: u32,
 ) -> ([Vertex; 4], [u16; 6], (f32, f32), (f32, f32), (f32, f32)) {
@@ -101,16 +270,20 @@ pub fn get_button_vertices_indices(
         b: 1.0,
         a: 1.0,
     };
-    let button_size = (80.0, 25.0); // Button size in pixels
-    let uv_x = 26.0 / atlas_width as f32;
-    let uv_y = 0.0 / atlas_height as f32;
-    let uv_width = 80.0 / atlas_width as f32;
-    let uv_height = 25.0 / atlas_height as f32;
+
+    // Define the button size and UV coordinates
+    let (width, height, x, y) = get_button_size_and_position(variant, kind);
+
+    let button_size = (width, height); // Button size in pixels
+    let uv_x = x / atlas_width as f32;
+    let uv_y = y / atlas_height as f32;
+    let uv_width = width / atlas_width as f32;
+    let uv_height = height / atlas_height as f32;
 
     println!("UV: {:?} {:?} {:?} {:?}", uv_x, uv_y, uv_width, uv_height);
 
-    let rect_width = 80; // Rectangle width in pixels
-    let rect_height = 25; // Rectangle height in pixels
+    let rect_width = width; // Rectangle width in pixels
+    let rect_height = height; // Rectangle height in pixels
     let scale_factor = 1.5; // Scaling factor for the button
 
     let scaled_rect_width = rect_width as f32 * scale_factor;
